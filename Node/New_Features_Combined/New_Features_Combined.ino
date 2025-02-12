@@ -1336,6 +1336,7 @@ void print_menu_options() {
   Serial.println(F("   e  <--  Erase all data"));                    // "101" erase all data
   //  Serial.println(F("   m  <--  Repeat menu"));                                    // "109" repeat menu, not functional
   Serial.println(F("   x  <--  Exit"));  // "120" exit
+  Serial.println(F("   z  <--  Events Menu"));  // "122" events menu
 }
 
 void identify_temperature_sensors() {
@@ -2697,30 +2698,12 @@ void Identify_1WireDevices() {
 bool configuration_changed = false;
 // Planned Change: improve saving functionality, possibly use a boolean
 
-//-----Menu Routine----------------------------------------------------
+//-----Start of Menu Routine----------------------------------------------------
 void menu() {
 
   if (Serial.available() > 0) {
     Serial.read();  //clear serial input buffer
   }
-
-  // Planned Change: IDnum has been removed from EEPROM
-  // itoa(eeprom_object.IDnum, a, 10);  //convert IDnum to character array
-
-  // if (eeprom_object.IDnum < 10) {  // for naming filename
-  //   filename[0] = '0';             // put into filename[] array
-  //   filename[1] = '0';
-  //   filename[2] = a[0];
-  // } else if (eeprom_object.IDnum < 100) {
-  //   filename[0] = '0';  // put into filename[] array
-  //   filename[1] = a[0];
-  //   filename[2] = a[1];
-  // } else {
-  //   filename[0] = a[0];  // put into filename[] array
-  //   filename[1] = a[1];
-  //   filename[2] = a[2];
-  // }
-
   print_board_info();
   print_menu_options();
 
@@ -2770,50 +2753,18 @@ void menu() {
       break;
 
     case 105:  // "i" for set ID numbers-----------------------------------------
-
-      Serial.println(F("Set network ID numbers (ProjectID, BoardID, NodeID, GatewayID):"));  // set ProjectID, BoardIDnum, nodeID, and gatewayID numbers
-      get_integer_input();                                                                   //otherwise the first input is always 0?
-
-      set_project_id();
-
-      //
-      // set_board_id();
-
-      set_node_id();
-
-      set_gateway_id();
-
-      manager.setThisAddress(eeprom_object.nodeID);  // Set Radio Address
-
+      set_id_numbers();
       menu();  // go back to menu
       break;
 
     case 97:  // "a" for Setting RTC Alarms for measurement interval
-      Serial.println(F("Define measurement interval in minutes."));
-      Serial.flush();
-      get_integer_input();  //otherwise the first input is always 0?
-      Serial.println();
-      Serial.print(F("Current Measurement Interval (Minutes):  "));
-      Serial.println(eeprom_object.ALARM_1_Interval);
-      Serial.println();
-      get_integer_input();
-      eeprom_object.ALARM_1_Interval = indata;
-      Serial.print(F("Measurement Interval set to:  "));
-      Serial.println(eeprom_object.ALARM_1_Interval);
-      delay(20);
+
+      set_rtc_alarms();
       menu();
       break;
 
     case 115:  // "s" for switch water_manager----------------------------------
-      Serial.println(F("Switch Water Manager: "));
-      get_integer_input();  // otherwise the first input is always 0?
-      Serial.println();
-      Serial.println(F("Enable Water Manager?"));
-      Serial.print(F("Current Status: "));
-      Serial.println(eeprom_object.is_water_manager_on);  // returns 0 for false and 1 for true
-      get_integer_input();
-      eeprom_object.is_water_manager_on = indata;
-      delay(20);
+      switch_water_manager();
       menu();
       break;
 
@@ -2827,37 +2778,12 @@ void menu() {
       break;
 
     case 119:                             // "w" for setting water threshold levels and min time between irrigation events and reporting of resistance values
-      get_integer_input();                //otherwise the first input is always 0?
-      water_management_group_settings();  //void function
-
-      delay(20);
-      Serial.println(F("Do you want to include raw resistance values (for all sensors/groups) in the data string? Type 1 for true, Type 0 for false"));  // specify if resistance is desired in data string. true = 1 false = 0
-      Serial.println();
-      Serial.print(F("Current Value: "));
-      Serial.print(eeprom_object.include_resistance);
-      get_integer_input();
-      eeprom_object.include_resistance = indata;
+      define_water_settings();
       menu();
       break;
 
     case 100:  // "d" for Download all data in sd card----------------------------
-      Serial.println(F("Download all data:"));
-      delay(100);
-
-      myfile = SD.open(filename);  // open file
-
-      if (myfile) {
-        while (myfile.available()) {  // read file and print to Serial COM port, Note this will be slow with alot of data due to chip limitations. A desktop with a chip reader is nearly instantaneous.
-          Serial.write(myfile.read());
-        }
-        myfile.close();
-
-      } else {
-        Serial.println(F("Error opening file"));
-        // eeprom_object.error_log->sd_struct.open_file_failure = true;
-        eeprom_object.error_log.sd_struct.open_file_failure = true;
-      }
-      delay(10000);  //Give time for user to copy data...
+      download_sd();
       menu();
       break;
 
@@ -2866,42 +2792,357 @@ void menu() {
       menu();
       break;
 
-
     case 111:               //"o" for calibration / fixed resistor settings----------------------------
-      get_integer_input();  //Otherwise first input is always 0?
-      Serial.flush();       //unneeded?
-      Serial.println(F("Define calibration and fixed resistor settings..."));
-      Serial.println(F("Is a calibration resistor present?, 1 = true OR 0 = false"));
-      Serial.print(F("Current value:  "));
-      Serial.println(eeprom_object.calibration_resistor_present);
-      get_integer_input();
-      eeprom_object.calibration_resistor_present = indata;
-
-      Serial.println(F("Muliplexor channel location of the calibration resistor. 0 to 15"));
-      Serial.print(F("Current value:  "));
-      Serial.println(eeprom_object.cal_resistor_loc);
-      get_integer_input();
-      eeprom_object.cal_resistor_loc = indata;
-
-      Serial.println(F("Value of the calibration resistor in ohms. A float"));
-      Serial.print(F("Current value:  "));
-      Serial.println(eeprom_object.cal_resistor_val);
-      get_integer_input();
-      eeprom_object.cal_resistor_val = indata;
-
-      Serial.println(F("The value of the FIXED resistor in ohms. A float"));
-      Serial.print(F("Current value:  "));
-      Serial.println(eeprom_object.fixed_resistor_val);
-      get_integer_input();
-      eeprom_object.fixed_resistor_val = indata;
-
+      specify_resistors();
       menu();
       break;
 
     case 110:  //"n" for sepecifying number of WM sensors & grouping | 11/18/2021 untested, not sure if will work
-      // Work in Progress: Commented out to allow for compilation
-      {
-        // get_integer_input();  //otherwise the first input is always 0?
+      specify_irr_data();
+      menu();
+      break;
+    
+    case 120:  //"x" for Exit ---------------------------------------------------
+      Serial.println(F("Exit"));
+      Serial.println();
+      delay(10);
+      break;
+
+    case 122: //"z" for Events Menu
+      events_menu();
+
+    default:  //Define default case, exit menu if no valid user input
+      Serial.println(F("Exit"));
+      Serial.println();
+      delay(10);
+      break;
+  }
+  eeprom_address = 0;                         //clear eeprom_address
+  EEPROM.put(eeprom_address, eeprom_object);  //store new settings (eeprom_object with structure eeprom_struct) to chip EEPROM
+  eeprom_address = 0;                         //clear eeprom_address
+  Set_ALARM_1_Interval();
+  delay(100);
+}
+//-----End of Menu Routine----------------------------------------------------
+
+//-----Start of Menu Functions----------------------------------------------------
+void print_menu_options() {
+  Serial.println(F("Menu Actions:"));                                                   // Define menu Actions--------------------------------------------
+  Serial.println(F("   c  <--  Set clock"));                                            // "99" Set RTC clock
+  Serial.println(F("   i  <--  Set ID numbers"));                                       // "105" set IDnum, nodeID, gatewayID
+  Serial.println(F("   a  <--  Set Alarm (measurement) Interval"));                     // "97" Set the alarm intervals for the RTC
+  Serial.println(F("   g  <--  Toggle Radio Transmissions (ON/OFF)"));                  // "103" Enable or disable LoRa Radio transmisison
+  Serial.println(F("   h  <--  Toggle Troubleshooting (continuous) mode"));             // "104" Enter Troubleshooting continuous loop
+  Serial.println(F("   b  <--  Identify connected ds18b20 sensors"));                   // "98" menu routine for iteratively connecting temperature sensors and saving them to eeprom
+  Serial.println(F("   t  <--  Test measurements"));                                    // "116" take test measurements from sensors -> not currently used
+  Serial.println(F("   s  <--  Switch Water Manager"));                                 // "115" Toggle/Switch Water Manager routine
+  Serial.println(F("   w  <--  Define water threshold values and times"));              // "119" Define threshold to trigger an event
+  Serial.println(F("   n  <--  Specify number of Watermark sensors and Mean groups"));  // "110" Set number of WM sensors installed & specify groups based on channel position of multiplexor? Could also write funciton to subtract 1 from numbers specified so that actual terminal numbers can be used.
+  Serial.println(F("   o  <--  Specification of resistors for WM circuit"));            // "111" Define resistor information
+  Serial.println(F("   p  <--  Set output HIGH on pinouts 1 to 4"));                    // "112" For priming/testing irrigation equipment
+  //  Serial.println(F("   r  <--  Download range of data"));                         // "114" set beginning date to download, not functional
+  Serial.println(F("   f  <--  Display microSD card information"));  // "102" Get sdcard information, non functional
+  Serial.println(F("   d  <--  Download all data"));                 // "100" get all data to serial port
+  Serial.println(F("   e  <--  Erase all data"));                    // "101" erase all data
+  //  Serial.println(F("   m  <--  Repeat menu"));                                    // "109" repeat menu, not functional
+  Serial.println(F("   x  <--  Exit"));  // "120" exit
+  Serial.println(F("   z  <--  Events Menu"));  // "122" events menu
+}
+
+void identify_temperature_sensors() {
+  Serial.println(F("Iterative identification of ds18b20 temperature sensors."));
+  get_integer_input();  //otherwise the first input is always 0?
+  Serial.println(F("If you would like to continue, press 1. To return to main menu, press any other character."));
+  get_integer_input();
+  // do not specify int user_resp = indata; // for some reason it does not allow menu access, define the integer then change it.
+  int user_resp;
+  delay(100);
+  user_resp = indata;
+  delay(100);
+  if (user_resp != 1) {
+    menu();
+  } else {
+    Serial.println(F("Continuing with iterative identificaiton of ds18b20 temperature sensors..."));
+    delay(1000);
+    Serial.println(F("How many ds18b20 are being connected?"));
+    get_integer_input();
+    eeprom_object.num_ds18b20 = indata;
+
+    if (eeprom_object.num_ds18b20 == 0) {
+      Serial.println(F("As 0 external temperature sensors are being connected, temperature correction will be made using the Real Time Clock inside the environmental enclosure."));
+      menu();
+    }
+
+    Serial.print(F("User must complete identification of "));
+    Serial.print(eeprom_object.num_ds18b20);
+    Serial.println(F(" ds18b20 temperature sensors."));
+    Serial.println(F("Prepare to plug in sensors..."));
+    delay(2000);
+    Identify_1WireDevices();
+  }
+}
+
+void set_clock() {
+  Serial.println(F("Set clock:  "));
+  get_integer_input();  //otherwise the first input is always 0?
+  Serial.print(F("  input month: "));
+  get_integer_input();
+  mnths = indata;
+  Serial.print(F("  input day:    "));
+  get_integer_input();
+  days = indata;
+  Serial.print(F("  input year:   "));
+  get_integer_input();
+  yrs = indata;
+  Serial.print(F("  input hour:   "));
+  get_integer_input();
+  hrs = indata;
+  Serial.print(F("  input minute: "));
+  get_integer_input();
+  mins = indata;
+  Serial.print(F(" input second: "));
+  get_integer_input();
+  secs = indata;
+
+  rtc.adjust(DateTime(yrs, mnths, days, hrs, mins, secs));
+  delay(50);
+}
+
+void pump_priming_prompt() {
+  get_integer_input();  //otherwise the first input is always 0?
+  Serial.flush();
+  Serial.println(F("Are you sure you want to cycle the pumps?"));
+  Serial.println(F("Make sure the lines are oriented where outflow is desired!"));
+  Serial.println(F("Type YES to confirm priming of pumps"));
+
+  charinput();
+  if (charInput[0]) {
+    char answer[4]{ 0 };
+    byte i = 0;
+    for (int i = 0; i < 3; i++) {
+      if (charInput[i] != 0) {
+        answer[i] = charInput[i];
+      }
+    }
+    Serial.print(F("Answer: "));
+    Serial.println(answer);
+    if (strcmp(answer, "YES") == 0) {
+      Serial.println(F("Priming Pumps..."));
+
+      digitalWrite(in1, HIGH);  //provide power to relay/switch on respective pin, relays are configured active when HIGH. pumps should be normally open & circuit closed when powered
+      delay(10000);
+      digitalWrite(in1, LOW);  //power off
+      delay(2000);
+      digitalWrite(in2, HIGH);
+      delay(10000);
+      digitalWrite(in2, LOW);
+      delay(2000);
+      digitalWrite(in3, HIGH);
+      delay(10000);
+      digitalWrite(in3, LOW);
+      delay(2000);
+      digitalWrite(in4, HIGH);
+      delay(10000);
+      digitalWrite(in4, LOW);
+      Serial.println(F("Pump priming routine completed."));
+    } else {
+      Serial.println(F("Answer was not YES, pump priming failed to initialize."));
+    }
+  }
+}
+
+void radio_prompt() {
+  Serial.println(F("Would you like to enable radio transmisison?"));
+  get_integer_input();  //otherwise first is always 0?
+  Serial.println(F("Type 1 to enable radio transmissions or 0 to disable radio transmissions."));
+  get_integer_input();
+  eeprom_object.toggle_radio = indata;
+
+  if (indata != 1) {
+    Serial.println(F("Radio transmissions DISABLED."));
+    driver.sleep();  //Puts radio to sleep.
+  } else {
+    Serial.println(F("Radio transmissions ENABLED."));
+    RH_RF95 driver(4, 2);
+    RHReliableDatagram manager(driver, radioID);  //Set up the radio manager
+    if (!driver.init()) {
+      Serial.println(F("Radio initialization failed."));
+    }
+    if (driver.init()) {
+      Serial.println(F("Radio initilization successful."));
+    }
+  }
+}
+
+void troubleshooting_prompt() {
+  Serial.println(F("Would you like to enter troublesooting mode?"));
+  Serial.println(F("Troubleshooting mode does not save data to sdcard but DOES send radio transmissions."));
+  Serial.println();
+  Serial.println(F("You may also toggle the printing of extra runtime notes to help with troubleshooting."));
+  Serial.println(F("This can be done in Troubleshooting mode or during normal operation."));
+  get_integer_input();  //otherwise first is always 0?
+  delay(2000);
+
+  Serial.println(F("Would you like to enable runtime notes?"));
+  Serial.println(F("Enter 1 to enable runtime notes or 0 to disable runtime notes."));
+  Serial.print(F("Current runtime notes Setting:  "));
+  if (eeprom_object.run_notes) {
+    Serial.println(F("ON."));
+  } else {
+    Serial.println(F("OFF."));
+  }
+  get_integer_input();
+
+  if (indata == 1 || indata == 0) {
+    eeprom_object.run_notes = indata;
+  } else {
+    Serial.println(F("Invalid Entry, returning to main menu."));
+    menu();
+  }
+  delay(2000);
+
+  Serial.println(F("If you would like to enable troubleshooting mode enter 1, otherwise enter 0 to enable regular operation."));
+  Serial.println(F("Enter any other key to return to the main menu."));
+  get_integer_input();
+
+  if (indata == 1 || indata == 0) {
+    eeprom_object.demo_mode = indata;
+  } else {
+    menu();
+  }
+
+  if (eeprom_object.demo_mode) {  //if demo_mode is true (1)...
+    Serial.println(F("Troubleshooting mode enabled."));
+    delay(1000);
+  } else {
+    Serial.println(F("Regular operation enabled."));
+    delay(1000);
+  }
+}
+
+void erase_sd() {
+  Serial.println(F("Erase data on sd card..."));
+  Serial.print(F("Currently Writing to: "));
+  Serial.println(filename);
+  Serial.print(F("Do you want to delete: "));
+  Serial.print(filename);
+  Serial.println(F("? Type YES to confirm deletion of this file."));
+
+  get_integer_input();  //Otherwise first input is always 0?
+  Serial.flush();
+  charinput();
+  if (charInput[0]) {
+    char erase[4]{ 0 };
+    byte i = 0;
+    for (int i = 0; i < 3; i++) {
+      if (charInput[i] != 0) {
+        erase[i] = charInput[i];
+      }
+    }
+    Serial.print(F("erase:  "));
+    Serial.println(erase);
+    if (strcmp(erase, "YES") == 0) {
+      SD.remove(filename);
+      Serial.println(F("Data File deleted"));
+      // Planned Change: This will be removed since firstTime will be removed
+      // eeprom_object.firstTime = true;  //Return firsttime to true so header is printed when first writing to file
+    } else {
+      Serial.println(F("If condition not satisfied"));
+    }
+  }
+}
+
+void set_project_id() {
+  Serial.print(F(" Project ID:     "));  // get projectID up to numChars length
+  Serial.flush();
+  charinput();
+  if (charInput[0]) {
+    byte i = 0;
+    for (int i = 0; i < numChars; i++) {
+      if (charInput[i] != 0 || charInput[i] != '\0') {
+        eeprom_object.projectID[i] = charInput[i];
+      } else {
+        eeprom_object.projectID[i] = '\0';
+        break;
+      }
+    }
+  }
+}
+
+void set_node_id() {
+  Serial.print(F(" Node ID:  "));  // get nodeID
+  Serial.flush();
+  get_integer_input();  // decode user input
+  eeprom_object.nodeID = indata;
+}
+
+void set_gateway_id() {
+  Serial.print((" Gateway ID:  "));  // get GatewayID
+  Serial.flush();
+  get_integer_input();  // decode user input
+  eeprom_object.gatewayID = indata;
+}
+
+void set_id_numbers(){
+  Serial.println(F("Set network ID numbers (ProjectID, BoardID, NodeID, GatewayID):"));  // set ProjectID, BoardIDnum, nodeID, and gatewayID numbers
+  get_integer_input();                                                                   //otherwise the first input is always 0?
+
+  set_project_id();
+  set_node_id();
+  set_gateway_id();
+  manager.setThisAddress(eeprom_object.nodeID);  // Set Radio Address
+}
+
+void set_rtc_alarms(){
+  Serial.println(F("Define measurement interval in minutes."));
+  Serial.flush();
+  get_integer_input();  //otherwise the first input is always 0?
+  Serial.println();
+  Serial.print(F("Current Measurement Interval (Minutes):  "));
+  Serial.println(eeprom_object.ALARM_1_Interval);
+  Serial.println();
+  get_integer_input();
+  eeprom_object.ALARM_1_Interval = indata;
+  Serial.print(F("Measurement Interval set to:  "));
+  Serial.println(eeprom_object.ALARM_1_Interval);
+  delay(20);
+}
+
+void switch_water_manager(){
+  Serial.println(F("Switch Water Manager: "));
+  get_integer_input();  // otherwise the first input is always 0?
+  Serial.println();
+  Serial.println(F("Enable Water Manager?"));
+  Serial.print(F("Current Status: "));
+  Serial.println(eeprom_object.is_water_manager_on);  // returns 0 for false and 1 for true
+  get_integer_input();
+  eeprom_object.is_water_manager_on = indata;
+  delay(20);
+}
+
+void download_sd(){
+  Serial.println(F("Download all data:"));
+  delay(100);
+
+  myfile = SD.open(filename);  // open file
+
+  if (myfile) {
+    while (myfile.available()) {  // read file and print to Serial COM port, Note this will be slow with alot of data due to chip limitations. A desktop with a chip reader is nearly instantaneous.
+      Serial.write(myfile.read());
+    }
+    myfile.close();
+
+  } else {
+    Serial.println(F("Error opening file"));
+    // eeprom_object.error_log->sd_struct.open_file_failure = true;
+    eeprom_object.error_log.sd_struct.open_file_failure = true;
+  }
+  delay(10000);  //Give time for user to copy data...
+}
+
+void specify_irr_data(){
+  // Work in Progress: Commented out to allow for compilation
+  // get_integer_input();  //otherwise the first input is always 0?
         // Serial.println(F("Specify number of WaterMark sensors and averaging instructions."));
         // Serial.println(F("If you would like to continue, type 1. Press any other key to return to main menu."));
         // get_integer_input();
@@ -3037,28 +3278,51 @@ void menu() {
         //   Serial.print(eeprom_object.WM_group4[i]);
         //   Serial.print(F("  "));
         // }
-        // menu();
-        // break;
-      }
-    case 120:  //"x" for Exit ---------------------------------------------------
-      Serial.println(F("Exit"));
-      Serial.println();
-      delay(10);
-      break;
-
-
-    default:  //Define default case, exit menu if no valid user input
-      Serial.println(F("Exit"));
-      Serial.println();
-      delay(10);
-      break;
-  }
-  eeprom_address = 0;                         //clear eeprom_address
-  EEPROM.put(eeprom_address, eeprom_object);  //store new settings (eeprom_object with structure eeprom_struct) to chip EEPROM
-  eeprom_address = 0;                         //clear eeprom_address
-  Set_ALARM_1_Interval();
-  delay(100);
 }
+
+void specify_resistors(){
+  get_integer_input();  //Otherwise first input is always 0?
+  Serial.flush();       //unneeded?
+  Serial.println(F("Define calibration and fixed resistor settings..."));
+  Serial.println(F("Is a calibration resistor present?, 1 = true OR 0 = false"));
+  Serial.print(F("Current value:  "));
+  Serial.println(eeprom_object.calibration_resistor_present);
+  get_integer_input();
+  eeprom_object.calibration_resistor_present = indata;
+
+  Serial.println(F("Muliplexor channel location of the calibration resistor. 0 to 15"));
+  Serial.print(F("Current value:  "));
+  Serial.println(eeprom_object.cal_resistor_loc);
+  get_integer_input();
+  eeprom_object.cal_resistor_loc = indata;
+
+  Serial.println(F("Value of the calibration resistor in ohms. A float"));
+  Serial.print(F("Current value:  "));
+  Serial.println(eeprom_object.cal_resistor_val);
+  get_integer_input();
+  eeprom_object.cal_resistor_val = indata;
+
+  Serial.println(F("The value of the FIXED resistor in ohms. A float"));
+  Serial.print(F("Current value:  "));
+  Serial.println(eeprom_object.fixed_resistor_val);
+  get_integer_input();
+  eeprom_object.fixed_resistor_val = indata;
+}
+
+void define_water_settings(){
+  get_integer_input();                //otherwise the first input is always 0?
+  water_management_group_settings();  //void function
+
+  delay(20);
+  Serial.println(F("Do you want to include raw resistance values (for all sensors/groups) in the data string? Type 1 for true, Type 0 for false"));  // specify if resistance is desired in data string. true = 1 false = 0
+  Serial.println();
+  Serial.print(F("Current Value: "));
+  Serial.print(eeprom_object.include_resistance);
+  get_integer_input();
+  eeprom_object.include_resistance = indata;
+}
+//-----End of Menu Functions----------------------------------------------------
+
 
 //-----Return sdCard information----------------------------------------- Nonfunctional
 
