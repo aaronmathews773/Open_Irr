@@ -312,6 +312,7 @@ struct eeprom_struct {
   // Initally all -1, if an event is upcoming for group i, the
   int current_events[4]{0,0,0,0};
   int num_to_update = 0;
+  int num_events = 0;
 
   // 2D array with match fields, matchFields[0][i] are the match fields for hours, matchFields[1][i] the match fields for minutes, and matchFields[2][i] are the match fields for seconds
   // had to change uint16_t to int to avoid type errors with assignment using indata
@@ -425,6 +426,7 @@ ISR(PCINT0_vect) {
 // One option -
 // Another option - file stuff
 
+DynamicJsonDocument eventsLog(1024);
 
 // Initially timeEvaluationConsideration
 struct event {
@@ -543,7 +545,7 @@ int getGlobalEventNumber() {
   return (irrigationGroupEventsSummed);
 }
 
-event* events[50];
+event** events = new event*[15];
 
 void set_alarms(int interval_seconds) {
   sei();
@@ -760,23 +762,29 @@ void updateEEPROM() {  //2025.02.07 trying to incorporate a crc check
   // FixMe: Include the comparator for EEPROM to not overwrite too frequently if number of events don't change
   // Use strcmp
   // 2025.02.06 -> note that member-wise comparisons are best practice in C due to padded structs...  https://stackoverflow.com/questions/141720/how-do-you-compare-structs-for-equality-in-c
-  long long eepromCRCNow = eepromCRC32();
-  Serial.print("CRC32 of EEPROM data: ");
-  char crcBuffer[64];
-  //uint32_t key = 0xFEEDBEEF;
-  sprintf(crcBuffer, "0x%lX", (uint16_t)(eepromCRC32() >> 16), (uint16_t)(eepromCRC32() & 0xFFFFFFFF));
-  Serial.println();
-  if (eepromCRCNow == eepromCheck) {
-    Serial.println("No EEPROM changes to consider.");  //EEPROM has not changed since last read. //FAILING
-    return;
-  } else {
-    Serial.println("EEPROM changes detected.");
-    eeprom_address = 0;                         //clear eeprom_address
-    EEPROM.put(eeprom_address, eeprom_object);  //update chip EEPROM if there are any changes from what was saved...
-    eepromCheck = eepromCRC32();
-    eeprom_address = 0;  //clear eeprom_address
-  }
-  Serial.println("Done! EEPROM & CRC32 updated.");
+  // long long eepromCRCNow = eepromCRC32();
+  // Serial.print("CRC32 of EEPROM data: ");
+  // char crcBuffer[64];
+  // //uint32_t key = 0xFEEDBEEF;
+  // sprintf(crcBuffer, "0x%lX", (uint16_t)(eepromCRC32() >> 16), (uint16_t)(eepromCRC32() & 0xFFFFFFFF));
+  // Serial.println();
+  // if (eepromCRCNow == eepromCheck) {
+  //   Serial.println("No EEPROM changes to consider.");  //EEPROM has not changed since last read. //FAILING
+  //   return;
+  // } else {
+  //   Serial.println("EEPROM changes detected.");
+  //   eeprom_address = 0;                         //clear eeprom_address
+  //   EEPROM.put(eeprom_address, eeprom_object);  //update chip EEPROM if there are any changes from what was saved...
+  //   eepromCheck = eepromCRC32();
+  //   eeprom_address = 0;  //clear eeprom_address
+  // }
+  // Serial.println("Done! EEPROM & CRC32 updated.");
+  // FixMe: Include the comparator for EEPROM to not overwrite too frequently if number of events don't change
+  // Use strcmp
+  eeprom_address = 0;                         //clear eeprom_address
+  EEPROM.put(eeprom_address, eeprom_object);  //update chip EEPROM if there are any changes from what was saved...
+  eeprom_address = 0;                         //clear eeprom_address
+  Serial.println(F("EEPROM updated"));
 }
 
 void eepromDefault() {  //perhaps also save a back-up-file of eeprom on the sd card to attempt before default?
@@ -951,6 +959,19 @@ void latchingValveModuleReturnToIdle() {
   Serial.println(F("Default/Idle condition to save on current consumption."));
 }
 
+// https://docs.arduino.cc/learn/programming/memory-guide/
+void display_freeram() {
+  Serial.print(F("- SRAM left: "));
+  Serial.println(freeRam());
+}
+
+int freeRam() {
+  extern int __heap_start,*__brkval;
+  int v;
+  return (int)&v - (__brkval == 0  
+    ? (int)&__heap_start : (int) __brkval);  
+}
+
 void setup() {
   // Fixme: Think about only beginning serial if device is connected
   Serial.begin(9600);
@@ -995,20 +1016,20 @@ void setup() {
   //2025.02.07 need to have a default to be applied in the case eeprom is corrupted or on first start up?
   //consider future checksum for reading eeprom -> in progress 2025.02.07
   EEPROM.get(eeprom_address, eeprom_object);  //eeprom_address may be redundant if only writing one eeprom object (i.e. it would always begin at position 0)
-  eepromCheck = eepromCRC32();
+  // eepromCheck = eepromCRC32();
 
-  if (eepromCheck) {
-    Serial.println("CRC PASSED.");
-  } else {
-    //apply the default eeprom settings
-    Serial.println("CRC INVALID, applying defaults.");
-    eepromDefault();
-    eeprom_address = 0;
-    EEPROM.put(eeprom_address, eeprom_object);
-    eeprom_address = 0;
-    EEPROM.get(eeprom_address, eeprom_object);
-    eepromCheck = eepromCRC32();
-  }
+  // if (eepromCheck) {
+  //   Serial.println("CRC PASSED.");
+  // } else {
+  //   //apply the default eeprom settings
+  //   Serial.println("CRC INVALID, applying defaults.");
+  //   eepromDefault();
+  //   eeprom_address = 0;
+  //   EEPROM.put(eeprom_address, eeprom_object);
+  //   eeprom_address = 0;
+  //   EEPROM.get(eeprom_address, eeprom_object);
+  //   eepromCheck = eepromCRC32();
+  // }
 
   //----- Check SD card
   if (!SD.begin(SD_CS)) {
@@ -1024,13 +1045,17 @@ void setup() {
   set_radio();
   check_rtc();
 
+  Serial.println(eeprom_object.current_event_reference_number);
+  dump_file("events.txt");
   read_events_data();
-  print_board_info();
-  events_menu();  // Ready to incorporate into main menu modulo some small bugs
+  //print_board_info();
+  events_menu();
   // The number of reads/writes on eeprom is limited, so might want to think of other ways to store information like number of events
   // The realtime clock might have some memory
-  updateEEPROM();       //attempts CRC check & calls EEPROM.put() if passed.
+  display_freeram();
   write_events_data();  //checks global number of events & for the need to update events.txt, [for now uses a temporary comparator in json format - temp_json_data ] if passed.
+
+  updateEEPROM();      
 
   // menu(); // events menu in open_irr, continue on valve_menu and this file
   Serial.println("Initialization Completed.");
@@ -3334,12 +3359,12 @@ void find_upcoming_events() {
   // Get the current time
   DateTime now = rtc.now();
 
-  if (getGlobalEventNumber() == 0) {
+  if (eeprom_object.num_events == 0) {
     Serial.println(F("There are no events indicated in eeprom."));
     return;
   } else {
 
-    for (uint16_t i = 0; i < getGlobalEventNumber(); i++) {
+    for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
       if (events[i]->recurring) {
         uint32_t current_unix_epoch_time = now.unixtime();  //get current unix epoch time
         uint32_t num_seconds_in_week = 604800;
@@ -3704,7 +3729,8 @@ void events_menu() {
   Serial.println(F("4    <-     Remove All Events From Schedule"));
   Serial.println(F("5    <-     Clear Match Fields"));
   Serial.println(F("6    <-     Emergency Clear SD & EEPROM"));
-  Serial.println(F("7    <-     Exit Events Menu"));
+  Serial.println(F("7    <-     Schedule Test Events"));
+  Serial.println(F("8    <-     Exit Events Menu"));
 
 
 
@@ -3753,6 +3779,15 @@ void events_menu() {
     eepromDefault();
     Serial.println("Sd card and EEPROM erased. EEPROM reset to default.");
   } else if (menu_input == 7) {
+   
+    DateTime* span[2];
+    span[0] = &(rtc.now() + TimeSpan(60));
+    span[1] = &(rtc.now() + TimeSpan(120));
+
+    bool groups[4] = {true, false, false, false};
+    schedule_new_event(groups, false, 1, span);
+  }
+  else if (menu_input == 8){
     return;
   }
   events_menu();
@@ -4165,47 +4200,35 @@ void recurring_event_scheduler_menu(int event_type) {
 
 // Functions for managing events
 void schedule_new_event(bool groups[4], bool recurring, uint8_t event_type, DateTime* span[2]) {
-  //event new_event(eeprom_object.current_event_reference_number, groups, recurring, event_type, span);
-  events[getGlobalEventNumber()] = new event(eeprom_object.current_event_reference_number, groups, recurring, event_type, span);
-  for (int i = 0; i < 4; i++) {
-    if (groups[i]) {
-      eeprom_object.current_events[i]++;
-    }
+  bool* groups_heap = new bool[4];
+  for (int i = 0; i < 4; i++){
+    groups_heap[i] = groups[i];
   }
-  Serial.print("printing from schedule_new_event");
-  print_all_events();
+  DateTime** span_heap = new DateTime*[2];
+  for (int i = 0; i < 2; i++){
+    span_heap[i] = span[i];
+  }
+  events[eeprom_object.num_events] = new event(eeprom_object.current_event_reference_number, groups_heap, recurring, event_type, span_heap);
+  // Serial.print("printing from schedule_new_event");
+  // print_all_events();
+  eeprom_object.num_events++;
   eeprom_object.current_event_reference_number++;
 }
 
 void remove_event(int index) {
   delete events[index];
-  for (uint16_t i = index; i < getGlobalEventNumber() - 1; i++) {
-    events[i] = events[i + 1];
+  for (int i = index; i < eeprom_object.num_events - 1; i++){
+    events[i] = events[i+1];
   }
-  events[getGlobalEventNumber() - 1] = nullptr;
-  for (int i = 0; i < 4; i++) {
-    if (eeprom_object.current_events[i] != 0) {
-      eeprom_object.current_events[i]--;
-    }
-  }
+  events[eeprom_object.num_events-1] = nullptr;
+  eeprom_object.num_events--;
 }
 
 void remove_all_events() {
-
-  while (getGlobalEventNumber() > 0) {
-    if (getGlobalEventNumber() == 65535 || getGlobalEventNumber() == 255) {
-      Serial.println("current_events overflow");
-      return;
-    }
-    if (getGlobalEventNumber() <= 0) {
-      return;
-    }
-    for (int i = 0; i < 4; i++) {
-      remove_event(eeprom_object.current_events[i] - 1);
-    }
+  while (eeprom_object.num_events > 0){
+    remove_event(eeprom_object.num_events-1);
   }
   delete[] events;
-  SD.remove("events.txt");
 }
 
 // saved
@@ -4216,7 +4239,9 @@ void remove_all_events() {
 // Look into whether writing new file or not
 // Can compare 2 buffers or boolean to see if change
 void read_events_data() {
-  StaticJsonDocument<1048> eventsLog;
+  // StaticJsonDocument<100> eventsLog;
+  // DynamicJsonDocument eventsLog(1024);
+  eventsLog.clear();
   File events_file = SD.open("events.txt", FILE_READ);
   if (!events_file) {
     Serial.println(F("File does not exist, nothing was read."));
@@ -4224,10 +4249,9 @@ void read_events_data() {
     return;
   }
   Serial.println(F("Reading in events from file."));
-  char buf[1048];
-  events_file.read(buf, 1048);
+  char* buf = new char[1024];
+  events_file.read(buf, 1024);
   events_file.close();
-  // Serial.println(buf);
   DeserializationError error = deserializeJson(eventsLog, buf);
 
   if (error) {
@@ -4237,7 +4261,7 @@ void read_events_data() {
   }
 
   deserializeJson(eventsLog, temp_json_data);
-  JsonArray eventsArray = eventsLog["eventsArray"].as<JsonArray>();  //saved
+  JsonArray eventsArray = eventsLog["eventsArray"].as<JsonArray>();
 
   int i = 0;
   for (JsonObject o : eventsLog["eventsArray"].as<JsonArray>()) {
@@ -4245,7 +4269,6 @@ void read_events_data() {
     for (int j = 0; j < 4; j++) {
       events[i]->groups[j] = o["groups"][j];
     }
-    //events[i]->group = o["group"];
     events[i]->recurring = o["recurring"];
     events[i]->event_type = o["event_type"];
     uint32_t start = o["start_span_seconds"];
@@ -4258,14 +4281,18 @@ void read_events_data() {
 }
 
 void write_events_data() {
-  if (getGlobalEventNumber() == 0) {
+  if (eeprom_object.num_events == 0) {
     Serial.println(F("No events currently scheduled, file was not written."));
     return;
   }
-  StaticJsonDocument<1048> eventsLog;
-  // jsonBuffer.clear() or eventsLog.clear()
+  print_all_events();
+  SD.remove("events.txt");
+  eventsLog.clear();
+  // StaticJsonDocument<100> eventsLog;
+  //DynamicJsonDocument eventsLog(1024);
   JsonArray eventsArray = eventsLog.createNestedArray("eventsArray");
-  for (uint16_t i = 0; i < getGlobalEventNumber(); i++) {
+
+  for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
     events[i]->print();
     JsonObject event = eventsArray.createNestedObject();
     JsonArray groups = event.createNestedArray("groups");
@@ -4277,33 +4304,47 @@ void write_events_data() {
     event["start_span_seconds"] = events[i]->span[0]->unixtime();
     event["end_span_seconds"] = events[i]->span[1]->unixtime();
   }
-  char json_array[1048];  // char array large enough
+  //char* json_array = new char[1024];  // char array large enough
   Serial.print(F("Saving new Event as Json..."));
-  serializeJson(eventsLog, json_array);  //copy the info in the buffer to the array to use writeFile below
-  if (!strcmp(json_array, temp_json_data)) {
-    Serial.println(F("No changes in events data, nothing printed to file"));
-    return;
-  } else {
-    // FixMe: If events array hasn't changed, don't write anything to SD card
-    SD.remove("events.txt");
-    delay(10);
-    serializeJson(eventsLog, Serial);
+  //serializeJson(eventsLog, json_array);  //copy the info in the buffer to the array to use writeFile below
+  
+  serializeJson(eventsLog, Serial);
+  File file = SD.open("events.txt", FILE_WRITE);
+  serializeJson(eventsLog, file);
+  // file.println(json_array);
+  file.close();
+  dump_file("events.txt");
+  // writeFileSD("events.txt", json_array);  //filename limit of 13 chars
+  //   delay(10);
+  // if (!strcmp(json_array, temp_json_data)) {
+  //   Serial.println(F("No changes in events data, nothing printed to file"));
+  //   return;
+  // } else {
+  //   // FixMe: If events array hasn't changed, don't write anything to SD card
+  //   SD.remove("events.txt");
+  //   delay(10);
+  //   serializeJson(eventsLog, Serial);
 
-    //File f = SD.open("events.txt", FILE_WRITE);
-    //serializeJson(eventsLog, f);
-    //writeFileSD("events.txt", "Hello World!");
-    writeFileSD("events.txt", json_array);  //filename limit of 13 chars
+  //   //File f = SD.open("events.txt", FILE_WRITE);
+  //   //serializeJson(eventsLog, f);
+  //   //writeFileSD("events.txt", "Hello World!");
+  //   writeFileSD("events.txt", json_array);  //filename limit of 13 chars
 
-    //eventsArray.printTo(Serial);
-    //serializeJsonPretty(eventsLog, Serial);
+  //   //eventsArray.printTo(Serial);
+  //   //serializeJsonPretty(eventsLog, Serial);
 
-    // Prints the file contents, useful for debugging
-    // myfile = SD.open("events.txt", FILE_READ);
-    // while (myfile.available()) {  // read file and print to Serial COM port, Note this will be slow with alot of data due to chip limitations. A desktop with a chip reader is nearly instantaneous.
-    //   Serial.write(myfile.read());
-    // }
-    // myfile.close();
+    //Prints the file contents, useful for debugging
+
+    
+  // }
+}
+
+void dump_file(const char* file){
+  myfile = SD.open(file, FILE_READ);
+  while (myfile.available()) {  // read file and print to Serial COM port, Note this will be slow with alot of data due to chip limitations. A desktop with a chip reader is nearly instantaneous.
+    Serial.write(myfile.read());
   }
+  myfile.close();
 }
 
 void test_read_and_write_events_data() {
@@ -4313,21 +4354,21 @@ void test_read_and_write_events_data() {
 }
 
 void print_all_events() {
-  // if (getGlobalEventNumber() == NULL || getGlobalEventNumber() == 0) {
+  // if (eeprom_object.num_events == NULL || eeprom_object.num_events == 0) {
   //   Serial.println(F("No events to print."));
   //   return;
   // }
   Serial.print(F("There are currently "));
-  Serial.print(getGlobalEventNumber());
+  Serial.print(eeprom_object.num_events);
   Serial.println(F(" events."));
   Serial.println(F("Printing all events."));
-  for (uint16_t i = 0; i < getGlobalEventNumber(); i++) {
+  for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
     events[i]->print();
   }
 }
 
 void print_events_by_group(int group) {
-  for (uint16_t i = 0; i < getGlobalEventNumber(); i++) {
+  for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
     if (events[i]->groups[i]) {
       events[i]->print();
     }
@@ -4345,7 +4386,7 @@ int min_time_to_next_event() {
   uint32_t num_seconds_since_week_start = (current_unix_epoch_time - shift) % num_seconds_in_week;
   //Serial.println(num_seconds_since_week_start);
 
-  for (uint16_t i = 0; i < getGlobalEventNumber(); i++) {
+  for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
     if (events[i]->recurring) {
       uint32_t beginnging_seconds_since_week_start = (events[i]->span[0]->unixtime() - shift) % num_seconds_in_week;
       uint32_t ending_seconds_since_week_start = (events[i]->span[1]->unixtime() - shift) % num_seconds_in_week;
@@ -4483,7 +4524,7 @@ int check_for_recurring_events() {
   uint32_t num_seconds_since_week_start = (current_unix_epoch_time - shift) % num_seconds_in_week;
 
 
-  for (uint16_t i = 0; i < getGlobalEventNumber(); i++) {
+  for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
     if (events[i]->recurring) {
       uint32_t beginnging_seconds_since_week_start = (events[i]->span[0]->unixtime() - shift) % num_seconds_in_week;
       uint32_t ending_seconds_since_week_start = (events[i]->span[1]->unixtime() - shift) % num_seconds_in_week;
@@ -4522,7 +4563,7 @@ int check_for_singular_events() {
   // Apparently putting 5 in here will result in 8 seconds being added?
   TimeSpan t(5);
   Serial.print((now + t).timestamp());
-  for (uint16_t i = 0; i < getGlobalEventNumber(); i++) {
+  for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
     //Serial.print(events[i]->span[0].timestamp());
     if (now + t >= *(events[i]->span[0]) && now + t <= *(events[i]->span[1])) {
       // event is found, just print for now, but eventually  proceed to nonblocking irrigation
