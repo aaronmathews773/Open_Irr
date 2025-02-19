@@ -448,8 +448,8 @@ struct event {
     for (int i = 0; i < 4; i++) {
       this->groups[i] = groups[i];
     }
-    this->span[0] = span[0];
-    this->span[1] = span[1];
+    this->span[0] = new DateTime(span[0]);
+    this->span[1] = new DateTime(span[1]);
   }
 
   event()
@@ -482,6 +482,8 @@ struct event {
   }
 
   void print_singular_event_span() {
+    Serial.print(F("Event Reference Number: "));
+    Serial.println(event_reference_number);
     Serial.println(F("Start"));
     Serial.print(F("Year: "));
     Serial.println(span[0]->year());
@@ -545,7 +547,7 @@ int getGlobalEventNumber() {
   return (irrigationGroupEventsSummed);
 }
 
-event** events = new event*[15];
+event* events[14];
 
 void set_alarms(int interval_seconds) {
   sei();
@@ -1050,9 +1052,13 @@ void setup() {
   read_events_data();
   //print_board_info();
   events_menu();
+  Serial.println(eeprom_object.num_events);
   // The number of reads/writes on eeprom is limited, so might want to think of other ways to store information like number of events
   // The realtime clock might have some memory
   display_freeram();
+  for (int i = 0; i < eeprom_object.num_events; i++){
+    Serial.println(sizeof(*events[i]));
+  }
   write_events_data();  //checks global number of events & for the need to update events.txt, [for now uses a temporary comparator in json format - temp_json_data ] if passed.
 
   updateEEPROM();      
@@ -3224,6 +3230,13 @@ void Set_ALARM_1_Interval() {
 
 // Menu setting for irrigation sensor/timer based
 
+void fill_events_queue(){
+  DateTime now = rtc.now();
+        uint32_t current_unix_epoch_time = now.unixtime();
+  for (int i = 0; i < eeprom_object.num_events; i++){
+    if ()
+  }
+}
 
 // States: IRRIGATING_S(sensor based irrigation), IRRIGATING_M(measurement based irrigation),
 void events_loop() {
@@ -3252,7 +3265,8 @@ void events_loop() {
   //   }
   // }
 
-  check_for_singular_events();
+  find_upcoming_events();
+
   // Check match fields
   //check_for_sensor_based_irrigation();
   // Test a sensor measurement event everyday where seconds is 15
@@ -3296,10 +3310,10 @@ void events_loop() {
   curr_state = IDLE;
 
   reset_events_queue();
-  find_upcoming_events();
+  
 
   // How to handle pulse type vavles with this loop????
-  while (eeprom_object.events_queue_size > 0) {
+  while (events_queue_size > 0) {
     // Timing of the pulse length, not every x ms
     // Check to make sure the valve is closed
     // Maybe attach another component that allows verififcant (set one of 4 output pins as input to verify valve state)
@@ -3354,43 +3368,41 @@ void events_loop() {
 
 int events_queue_size = 50;
 
-// Populates eventsQueue with upcoming events
+// Populates events_queue with upcoming events
 void find_upcoming_events() {
-  // Get the current time
   DateTime now = rtc.now();
 
   if (eeprom_object.num_events == 0) {
     Serial.println(F("There are no events indicated in eeprom."));
     return;
-  } else {
+  }
+  for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
+    if (events[i]->recurring) {
+      uint32_t current_unix_epoch_time = now.unixtime();  //get current unix epoch time
+      uint32_t num_seconds_in_week = 604800;
+      uint32_t shift = 259200;
+      uint32_t num_seconds_since_week_start = (current_unix_epoch_time - shift) % num_seconds_in_week;
 
-    for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
-      if (events[i]->recurring) {
-        uint32_t current_unix_epoch_time = now.unixtime();  //get current unix epoch time
-        uint32_t num_seconds_in_week = 604800;
-        uint32_t shift = 259200;
-        uint32_t num_seconds_since_week_start = (current_unix_epoch_time - shift) % num_seconds_in_week;
-
-        uint32_t beginning_seconds_since_week_start = (events[i]->span[0]->unixtime() - shift) % num_seconds_in_week;
-        uint32_t ending_seconds_since_week_start = (events[i]->span[1]->unixtime() - shift) % num_seconds_in_week;
-        if (num_seconds_since_week_start >= beginning_seconds_since_week_start && num_seconds_since_week_start <= ending_seconds_since_week_start) {
-          // add to events queue
-          // might want to add something to current time to find events very shortly in the future to ensure they don't get skipped
-          // so probably current_time + some_small_offset
-          // Work in Progress: Commented out to allow for compilation
-          //eeprom_object.events_queue[events_queue_size] = *(events[i]->event_id);
-          eeprom_object.events_queue_size++;
-        }
-      } else {
-        // *(events[i]->span[0])
-        // span is a DateTime array, and we have <= comparators we can compare 2 datetime objects
-        // Making sure that the time now is in the range of the span
-        // With arrow notation, we can access data elements of an objects using it's pointer
-        if (now >= *(events[i]->span[0]) && now <= *(events[i]->span[1])) {
-          // Work in Progress: Commented out to allow for compilation
-          //eeprom_object.events_queue[events_queue_size] = *(events[i]->event_id);
-          eeprom_object.events_queue_size++;
-        }
+      uint32_t beginning_seconds_since_week_start = (events[i]->span[0]->unixtime() - shift) % num_seconds_in_week;
+      uint32_t ending_seconds_since_week_start = (events[i]->span[1]->unixtime() - shift) % num_seconds_in_week;
+      if (num_seconds_since_week_start >= beginning_seconds_since_week_start && num_seconds_since_week_start <= ending_seconds_since_week_start) {
+        // add to events queue
+        // might want to add something to current time to find events very shortly in the future to ensure they don't get skipped
+        // so probably current_time + some_small_offset
+        // Work in Progress: Commented out to allow for compilation
+        //eeprom_object.events_queue[events_queue_size] = *(events[i]->event_id);
+        eeprom_object.events_queue_size++;
+      }
+    } else {
+      // *(events[i]->span[0])
+      // span is a DateTime array, and we have <= comparators we can compare 2 datetime objects
+      // Making sure that the time now is in the range of the span
+      // With arrow notation, we can access data elements of an objects using it's pointer
+      if (now >= *(events[i]->span[0]) && now <= *(events[i]->span[1])) {
+        // Work in Progress: Commented out to allow for compilation
+        //eeprom_object.events_queue[events_queue_size] = *(events[i]->event_id);
+        events_queue[events_queue_size] = *(events[i]->event_id);
+        eeprom_object.events_queue_size++;
       }
     }
   }
@@ -4200,15 +4212,15 @@ void recurring_event_scheduler_menu(int event_type) {
 
 // Functions for managing events
 void schedule_new_event(bool groups[4], bool recurring, uint8_t event_type, DateTime* span[2]) {
-  bool* groups_heap = new bool[4];
-  for (int i = 0; i < 4; i++){
-    groups_heap[i] = groups[i];
-  }
-  DateTime** span_heap = new DateTime*[2];
-  for (int i = 0; i < 2; i++){
-    span_heap[i] = span[i];
-  }
-  events[eeprom_object.num_events] = new event(eeprom_object.current_event_reference_number, groups_heap, recurring, event_type, span_heap);
+  // bool* groups_heap = new bool[4];
+  // for (int i = 0; i < 4; i++){
+  //   groups_heap[i] = groups[i];
+  // }
+  // DateTime** span_heap = new DateTime*[2];
+  // for (int i = 0; i < 2; i++){
+  //   span_heap[i] = span[i];
+  // }
+  events[eeprom_object.num_events] = new event(eeprom_object.current_event_reference_number, groups, recurring, event_type, span);
   // Serial.print("printing from schedule_new_event");
   // print_all_events();
   eeprom_object.num_events++;
@@ -4216,6 +4228,10 @@ void schedule_new_event(bool groups[4], bool recurring, uint8_t event_type, Date
 }
 
 void remove_event(int index) {
+  if (index < 0 || index >= eeprom_object.num_events){
+    Serial.println(F("Invalid index, nothing removed"));
+    return;
+  }
   delete events[index];
   for (int i = index; i < eeprom_object.num_events - 1; i++){
     events[i] = events[i+1];
