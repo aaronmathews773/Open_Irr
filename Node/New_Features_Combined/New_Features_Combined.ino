@@ -1,3 +1,146 @@
+/*
+Planning Thoughts
+// Radio events, static events that need to be shceduled
+// Avoid scheduling certain events at the same time
+
+// Might be able to track state of valve, when we pulse and irrigation event not ever, can't schedule another event
+
+// Find times to next pulse for each of the non latching valves that are also irrigating: t1, t2, etc.
+// Find the smallest
+
+
+// If the smallest is within 200ms, then exit current function and pulse quickly
+// void pulse_non_latching_valves(){
+//   // Loop through all the active valves
+
+//   // See if valve is non latching
+
+//   // If time now is less than x ms from next pulse, pulse
+
+// }
+
+// Stores the correct valve for group i (value is the index of the valve in valves)
+// int valveLookupTable[4];
+
+// One option -
+// Another option - file stuff
+
+// DynamicJsonDocument eventsLog(1024);
+
+
+// void check_for_irrigation(){
+//   DateTime now = rtc.now();
+//   // get current time, look at day, hour, second, minute, second
+//   // compare to intervals
+//   uint16_t day = now.day();
+//   uint16_t hour = now.hour();
+//   uint16_t minute = now.minute();
+//   uint16_t second = now.second();
+
+//   // Can get epoch time, seconds from Jan 1, 1970, work modulo number of seconds in a week
+
+//   // Can convert day, hour, minute, second to seconds since start of week (Monday 12 AM?)
+//   // second + minute*60 + hour*60*60 + day*24*60*60
+
+//   // loop through the array/vector of time windows. Look at the start seconds and end seconds
+
+//   // if seconds_since_start_of_week >= time_windows[]
+
+//   // IF want interval from one week to spill over to the next, split the interval, go from start - MOnday 12:00 AM and then Monday 12:00 AM to end.
+
+
+
+//   // Format: YYYY MM DD HH MM SS
+//   // Read in as a string, split on spaces, convert each piece to int32
+//   // create 2 DateTime objects
+//   // Constructor: DateTime(YYYY, MM, DD, HH, MM, SS, MS)
+//   // uint32_t current_unix_epoch_time = now.unixtime();
+// }
+
+
+// void perform_valve_procedure(int procedure){
+//   // idle state normally closed (circuit is closed) and latching
+//   if (procedure == 1){
+//     // can turn
+//   }
+//   else if (procedure == 2){
+
+//   }
+//   else if (procedure == 3){
+
+//   }
+//   else if (procedure == 4){
+
+//   }
+//   else{
+//     System.println("Invalid procedure");
+//   }
+// }
+
+//[10:51 AM] Bierer, Andrew - REE-ARS
+//template for thought process
+void somethingWorkingPlease() {
+
+  //Read from SD card and have json file in a dynamically allocated buffer to pull from using dot access
+  //one sub function
+
+  //Read our large structure from EEPROM (can be done before SD card i dont think it matters)
+  //one sub function
+
+  //one function
+  //Check if it is time to do something
+  //Iteritively deal with each "event-reference #" in the SD card file
+  //->Checking the clock and using the "timeEvaluation" function with matchfields.
+  //For ANY  of the event-references in the sd-card file, is it time to do something - or wait to do something that is scheduled before next wake?
+  //No -> go to short sleep
+  //Yes -> Okay, which # is this? (lets call it "activeEvent") read eeprom information for
+
+  // int equal to active Event
+
+
+
+   struct valveEventSchedule{
+ uint8_t outputValve[4]; //Array to hold valve number
+ uint8_t valveEventReference[40]; //Array to hold the event reference(s) - a static declaration of 10 references to consider? would be hard to do this dynamically with a limited and fixed eeprom size.
+//output pin being set high
+} eventReference;
+
+
+  //One function
+  //Evaluate the sd-card event-reference # (that it is time to do something) against the stored eeprom event-reference
+  //For valves
+  //i = 0-4 for valves
+  //For valve event-references (ten array positions for each valve)
+  //if j == activeEvent
+  // Do the something that is being scheduled
+  //sub-function to do that something...
+}
+
+
+// Planned Change: event has start, stop, e.g. threshold: 30, then evaluation criteria,
+
+// Integers to identify each criteria, parameter passed into this function
+
+// Read sensors, evaluate readings based on our criteria, then write an event tailored to the criteria
+
+// Removing actual irrigation from this function and shift to an evaluation function
+// bool
+
+// shell function
+void evaluate_irr_criteria_1(int WM_group_num, int WM_group_mean, int WM_group_water_threshold, uint32_t last_irr_time_for_group) {
+  bool irrigate = false;
+
+
+  // evaluate criteria
+
+  if (irrigate) {
+    // create new event
+    // probably singular
+    // calculate and define the event span
+  }
+}
+*/
+
 //-----Libraries--------------------------------------------------
 #include <SPI.h>       //SPI communication
 #include <SD.h>        //sd card functionality
@@ -24,7 +167,6 @@
 #include <ArduinoJson.hpp>       //Json file format use
 #include <math.h>                //Mathmatical functions
 #include "predefined_valves.h"
-
 
 //-----Assign Pins-------------------------------------------------
 #define LED 15         //LED pin on Moteino Mega board
@@ -68,10 +210,6 @@ int io_pins[] = { 12, 13, 14, 3 };
 //-----Declare Global Variables-------------------------------------------
 
 char filename[] = "000_Data.txt";  //sd card file name, 000 to be replaced by IDnum
-
-char irrigation_events_data[] = "irr_data.txt";
-char permitted_events_data[] = "per_data.txt";
-char den_events_data[] = "den_data.txt";
 
 uint16_t expectedDeviceID = 0xEF30;  //expected flash manufacturer ID of Moteino mega
 //////////////////////////////////////////
@@ -124,12 +262,7 @@ char incomingChar[200]{ '\0' };
 
 const byte numChars = 32;  //for reading in character user input
 
-// Fixme: Plan to replace with an array
 int wm_group_means[4];
-// int WM_group1_mean;  //Integer to hold WM_group means. Group 1 to 4 means will be attached to a corresponding relay in pin, 1-4
-// int WM_group2_mean;
-// int WM_group3_mean;
-// int WM_group4_mean;
 
 int wm_grace_window = 10;  //Define the tolerance window (+ or - ,in kpa) for removing an individual sensor from the calculation of the group mean. Only triggers if pdiff from raw mean is >= 20.
 bool force_irr = false;
@@ -210,9 +343,6 @@ error_log_struct update_error_log;  //globally declared extra to reset the eepro
 const size_t capacity = 5 * JSON_ARRAY_SIZE(4) + 2 * JSON_OBJECT_SIZE(4) + 4 * JSON_OBJECT_SIZE(16) + 100;  // From assessment tool https://arduinojson.org/v6/assistant/
 ArduinoJson::StaticJsonDocument<capacity> jsonBuffer;                                                       // Hopefully declaring once here is OK
 
-char temp_json_data[4000];  //comparator for events.txt to see if scheduled events changes.
-
-
 //EEPROM structure method for storing and retrieving values from eeprom: relevant for variables defined in the menu
 // Note that each EEPROM position can save only one byte of information, i.e. 8-bit numbers 0-255 and leading values (001) ARE NOT INTERPRETABLE
 // but more than one position can be accessed using eeprom.put and eeprom.get with a defined structure
@@ -248,10 +378,6 @@ struct eeprom_struct {
   int fixed_resistor_val;                //The value of the fixed resistor attached in series to the sensor and ground (voltage divider circuit), an unchanged schematic will be 10,000 ohms
   uint8_t num_WM;                        //Define the number of watermark sensors present
 
-  /*
-  Planned Change
-  In the future, we can add a const called NUM_GROUPS for the array sizing
-  */
   uint8_t WM_groups[4][16]{
     //255 will be the default value, typically this will hold int pertaining to the mux channel & watermark sensor(s) considered in each group
     { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 },  //group1
@@ -259,43 +385,15 @@ struct eeprom_struct {
     { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 },  //group3
     { 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255 },  //group4
   };                                                                 //array[rows][columns]
-  // uint8_t WM_group1[16]{ 0 };  //Array to hold mux channel location of WM sensors to average.
-  // uint8_t WM_group2[16]{ 0 };
-  // uint8_t WM_group3[16]{ 0 };
-  // uint8_t WM_group4[16]{ 0 };
 
-  /*
-  Planned Change
-  */
+  
   uint8_t num_ds18b20;  //Define the number of ds18b20 temperature sensors present
-  uint8_t ds18b20_sensor_addresses[16][8];
-  // uint8_t ds18b20_sensor0[8];  //Define locations to store ds18b20_sensor_addresses
-  // uint8_t ds18b20_sensor1[8];
-  // uint8_t ds18b20_sensor2[8];
-  // uint8_t ds18b20_sensor3[8];
-  // uint8_t ds18b20_sensor4[8];
-  // uint8_t ds18b20_sensor5[8];
-  // uint8_t ds18b20_sensor6[8];
-  // uint8_t ds18b20_sensor7[8];
-  // uint8_t ds18b20_sensor8[8];
-  // uint8_t ds18b20_sensor9[8];
-  // uint8_t ds18b20_sensor10[8];
-  // uint8_t ds18b20_sensor11[8];
-  // uint8_t ds18b20_sensor12[8];
-  // uint8_t ds18b20_sensor13[8];
-  // uint8_t ds18b20_sensor14[8];
-  // uint8_t ds18b20_sensor15[8];
+  uint8_t ds18b20_sensor_addresses[16][8]; // One wire address
 
   uint8_t ALARM_1_Interval = 1;  //Set the interval for alarm 1 (wake and run routine), default is 1
 
-  /*
-  Planned Change
-  */
-  uint8_t n_channels_per_wm_group[4];
-  // uint8_t n_channels_wm_group1;  //Int holding # of sensors utilized in irrigation group (WM_groups)
-  // uint8_t n_channels_wm_group2;
-  // uint8_t n_channels_wm_group3;
-  // uint8_t n_channels_wm_group4;
+ 
+  uint8_t n_channels_per_wm_group[4]; //Int holding # of sensors utilized in irrigation group (WM_groups)
 
   bool demo_mode;  //controls trouble shooting demo loop or the real loop
 
@@ -309,7 +407,7 @@ struct eeprom_struct {
 
   error_log_struct error_log;  //nested array element with proper structure for error_log -> **** 2025.02.06 should this be in the eeprom????????
 
-  // Initally all -1, if an event is upcoming for group i, the
+  // Expected number of events for group i
   int current_events[4]{0,0,0,0};
   int num_to_update = 0;
   int num_events = 0;
@@ -319,11 +417,12 @@ struct eeprom_struct {
   uint8_t matchFields[3][8];  //arbitrarily length 24? how many match fields are reasonable to expect?
   uint8_t numFields[3];       // Stores the number of fields for seconds, minutes, and hours respectively
 
-  // The queue would store the IDs of events
+  // This queue stores the reference numbers of events
   int events_queue[50];
   int events_queue_size = 0;
   uint16_t current_event_reference_number = 0;
 
+  // Predefined valves not done yet
   //valve valves[10];
   int current_valve_id = 0;
   int num_valves = 0;
@@ -331,11 +430,12 @@ struct eeprom_struct {
 };
 
 eeprom_struct eeprom_object = {};      //Declare an object with the eeprom_struct structure, access objects as eeprom_object."element of struct without quotes"
-eeprom_struct eeprom_comparator = {};  //Comparator to determine if changes have been made implying the eeprom needs re-written. Saves on write frequency. 2025.02.07-> replace with CRC check.
-
-
 
 unsigned long group_millis[4];
+
+event_state group_states[4];
+
+bool group_is_done[4];
 
 enum event_state {
   IDLE,
@@ -344,25 +444,16 @@ enum event_state {
   RADIO
 };
 
-event_state curr_state;
-
-event_state group_states[4];
-
-bool group_is_done[4];
-
 // Planned Change: New variables for compile_json
+// int channel;
+// int WM1_CB = 0;  //Holder for WM sensor value in CB/kPa, direction 1
+// double WM1_Resistance = 0;
+// int global_WM_group_num;
+// int global_WM_group_mean;
+// String global_last_irr_starting_time;
+// String global_last_irr_ending_time;
 
-int channel;
-int WM1_CB = 0;  //Holder for WM sensor value in CB/kPa, direction 1
-double WM1_Resistance = 0;
-int global_WM_group_num;
-int global_WM_group_mean;
-
-String global_last_irr_starting_time;
-String global_last_irr_ending_time;
-
-float global_temp_values[16];
-
+// float global_temp_values[16]; Utilized in getTemp
 
 //-----Initialize-----------------------------------------------------
 RTC_DS3231 rtc;
@@ -401,59 +492,34 @@ ISR(PCINT0_vect) {
   clearRTCInterrupt();
 }
 
-// Radio events, static events that need to be shceduled
-// Avoid scheduling certain events at the same time
+/*
+  The event struct is used for representing various events that a user can schedule.
+  Examples: Measurement Events, Irrigation Events, Radio Events, Permission/Deny Events, etc.
+*/
 
-// Might be able to track state of valve, when we pulse and irrigation event not ever, can't schedule another event
-
-// Find times to next pulse for each of the non latching valves that are also irrigating: t1, t2, etc.
-// Find the smallest
-
-
-// If the smallest is within 200ms, then exit current function and pulse quickly
-// void pulse_non_latching_valves(){
-//   // Loop through all the active valves
-
-//   // See if valve is non latching
-
-//   // If time now is less than x ms from next pulse, pulse
-
-// }
-
-// Stores the correct valve for group i (value is the index of the valve in valves)
-// int valveLookupTable[4];
-
-// One option -
-// Another option - file stuff
-
-DynamicJsonDocument eventsLog(1024);
-
-// Initially timeEvaluationConsideration
-struct event {
-  int event_reference_number;
-  // The irrigation groups that the event is scheduled for
-  bool groups[4];  // Makes sense to be here since if we have an array in eeprom, it's more difficult to update indices when removing
-  //int group;
-  // Could use pointers or references instead
-  bool recurring;  //false = singular
-  // bool permit;                 //false = deny
+struct event{
+  int event_reference_number; // Used to uniquely identify events
+  bool groups[4];  // groups[i] == True if event is scheduled for group i
+  bool recurring;  // false = singular
   uint8_t event_type;  //0=measurement, 1=irrigation, 2=permit window, 3=deny window....
 
-  //uint16_t matchFields[24];    //arbitrarily length 24? how many match fields are reasonable to expect?
+  DateTime* span[2];  // DateTime classes for start and end dates/times for a particular event
 
-  DateTime* span[2];  //DateTime classes for start and end dates/times for a particular event
-
+  // Constructor for event struct. This function is used to create new events.
+  // After colon, we're assigning values based on what is passed in. Initializer list
+  // event_reference_number(event_reference_number) means we assign the event_reference_number field of the struct with what the user passed in
+  // Example: program using this struct does this to create a new event: event* p = new event(a, b, c, d, e);
+  // a would be event_reference_number, b would be a bool array of 4 elements, etc.
+  // 
   event(uint16_t event_reference_number, bool groups[4], bool recurring, uint8_t event_type, DateTime* span[2])
-    : event_reference_number(event_reference_number), recurring(recurring), event_type(event_type) {
+    : event_reference_number(event_reference_number), recurring(recurring), event_type(event_type){
+    // Assigning array members by copy as right now group is passed by value
     for (int i = 0; i < 4; i++) {
       this->groups[i] = groups[i];
     }
-    this->span[0] = new DateTime(span[0]);
-    this->span[1] = new DateTime(span[1]);
+    this->span[0] = span[0];
+    this->span[1] = span[1];
   }
-
-  event()
-    : recurring(false), event_type(-1) {}
 
   void print() {
     Serial.print(F("Group(s): "));
@@ -547,6 +613,9 @@ int getGlobalEventNumber() {
   return (irrigationGroupEventsSummed);
 }
 
+// Globally declared array of pointers.
+// Each element is a pointer to an event.
+// 14 is arbitrary
 event* events[14];
 
 void set_alarms(int interval_seconds) {
@@ -635,35 +704,6 @@ void JTAG_off() {  //We don't ever need to turn it on for this application  //Mu
   MCUCR |= (1 << 7);
   sei();
 }
-
-// void check_for_irrigation(){
-//   DateTime now = rtc.now();
-//   // get current time, look at day, hour, second, minute, second
-//   // compare to intervals
-//   uint16_t day = now.day();
-//   uint16_t hour = now.hour();
-//   uint16_t minute = now.minute();
-//   uint16_t second = now.second();
-
-//   // Can get epoch time, seconds from Jan 1, 1970, work modulo number of seconds in a week
-
-//   // Can convert day, hour, minute, second to seconds since start of week (Monday 12 AM?)
-//   // second + minute*60 + hour*60*60 + day*24*60*60
-
-//   // loop through the array/vector of time windows. Look at the start seconds and end seconds
-
-//   // if seconds_since_start_of_week >= time_windows[]
-
-//   // IF want interval from one week to spill over to the next, split the interval, go from start - MOnday 12:00 AM and then Monday 12:00 AM to end.
-
-
-
-//   // Format: YYYY MM DD HH MM SS
-//   // Read in as a string, split on spaces, convert each piece to int32
-//   // create 2 DateTime objects
-//   // Constructor: DateTime(YYYY, MM, DD, HH, MM, SS, MS)
-//   // uint32_t current_unix_epoch_time = now.unixtime();
-// }
 
 //-----Get User input as integer-----------------------------------------------
 void get_integer_input() {
@@ -874,14 +914,9 @@ void eepromClear() {
   Serial.println("EEPROM memory has been cleared.");
 }
 
-
-
-
 //-----Store data on micro sd card----------------------------------
 
 void writeFileSD(const char* path, const char* message) {
-
-
   Serial.print(F("writeFileSD path: "));  //limited to 13 characters including extension
   Serial.println(path);
 
@@ -962,7 +997,7 @@ void latchingValveModuleReturnToIdle() {
 }
 
 // https://docs.arduino.cc/learn/programming/memory-guide/
-void display_freeram() {
+void displayFreeRAM() {
   Serial.print(F("- SRAM left: "));
   Serial.println(freeRam());
 }
@@ -1046,16 +1081,13 @@ void setup() {
 
   set_radio();
   check_rtc();
-
-  Serial.println(eeprom_object.current_event_reference_number);
-  dump_file("events.txt");
+   
   read_events_data();
   //print_board_info();
   events_menu();
-  Serial.println(eeprom_object.num_events);
   // The number of reads/writes on eeprom is limited, so might want to think of other ways to store information like number of events
   // The realtime clock might have some memory
-  display_freeram();
+  displayFreeRAM();
   for (int i = 0; i < eeprom_object.num_events; i++){
     Serial.println(sizeof(*events[i]));
   }
@@ -3230,13 +3262,13 @@ void Set_ALARM_1_Interval() {
 
 // Menu setting for irrigation sensor/timer based
 
-void fill_events_queue(){
-  DateTime now = rtc.now();
-        uint32_t current_unix_epoch_time = now.unixtime();
-  for (int i = 0; i < eeprom_object.num_events; i++){
-    if ()
-  }
-}
+// void fill_events_queue(){
+//   DateTime now = rtc.now();
+//         uint32_t current_unix_epoch_time = now.unixtime();
+//   for (int i = 0; i < eeprom_object.num_events; i++){
+//     if ()
+//   }
+// }
 
 // States: IRRIGATING_S(sensor based irrigation), IRRIGATING_M(measurement based irrigation),
 void events_loop() {
@@ -3306,38 +3338,36 @@ void events_loop() {
 
 
 
-  // state is initally IDLE
-  curr_state = IDLE;
 
   reset_events_queue();
   
 
   // How to handle pulse type vavles with this loop????
-  while (events_queue_size > 0) {
-    // Timing of the pulse length, not every x ms
-    // Check to make sure the valve is closed
-    // Maybe attach another component that allows verififcant (set one of 4 output pins as input to verify valve state)
-    //maintain_valves_open();
+  // while (events_queue_size > 0) {
+  //   // Timing of the pulse length, not every x ms
+  //   // Check to make sure the valve is closed
+  //   // Maybe attach another component that allows verififcant (set one of 4 output pins as input to verify valve state)
+  //   //maintain_valves_open();
 
 
-    // Prioritize scheduled irrigation events
+  //   // Prioritize scheduled irrigation events
 
-    // Check the type of event and if irrigation, move to new queue
-    for (int i = 0; i < eeprom_object.events_queue_size; i++) {
-      // Create a new function that finds an event by id/reference number and returns the pointer and input into this
-      // get_event_by_id
-      //handle_event(get_event_by_id(eeprom_object.events_queue[i]));
-    }
-    // subfunctions will update eepromCRC32 and we will keep track of events to remove
-    // eventsQueue will be updated after the loop
-    // If a function is non blocking it will move on to next iteration of loop
-    check_for_singular_events();
-    check_for_recurring_events();
+  //   // Check the type of event and if irrigation, move to new queue
+  //   for (int i = 0; i < eeprom_object.events_queue_size; i++) {
+  //     // Create a new function that finds an event by id/reference number and returns the pointer and input into this
+  //     // get_event_by_id
+  //     //handle_event(get_event_by_id(eeprom_object.events_queue[i]));
+  //   }
+  //   // subfunctions will update eepromCRC32 and we will keep track of events to remove
+  //   // eventsQueue will be updated after the loop
+  //   // If a function is non blocking it will move on to next iteration of loop
+  //   check_for_singular_events();
+  //   check_for_recurring_events();
 
-    // Could try to error bounds using ms for radio or other precise events
-    // Could use testcase and engineer some edge cases and regular cases and see whether the function works
-    // Could also be measurement events
-  }
+  //   // Could try to error bounds using ms for radio or other precise events
+  //   // Could use testcase and engineer some edge cases and regular cases and see whether the function works
+  //   // Could also be measurement events
+  // }
 
   // Standard event on all valves
   // Start one valve and can start another at same time and later time (e.g. one at noon and another 12:15)
@@ -3369,6 +3399,12 @@ void events_loop() {
 int events_queue_size = 50;
 
 // Populates events_queue with upcoming events
+
+
+/*
+Status: In Progress
+Description: This function finds upcoming events.
+*/
 void find_upcoming_events() {
   DateTime now = rtc.now();
 
@@ -3376,10 +3412,13 @@ void find_upcoming_events() {
     Serial.println(F("There are no events indicated in eeprom."));
     return;
   }
+
   for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
+    // events[i] is a pointer to an event object and the arrow notation: -> allows us to access the recurring field
     if (events[i]->recurring) {
       uint32_t current_unix_epoch_time = now.unixtime();  //get current unix epoch time
       uint32_t num_seconds_in_week = 604800;
+      // The shift shifts the week to start on Sunday 12:00 AM (I think?)
       uint32_t shift = 259200;
       uint32_t num_seconds_since_week_start = (current_unix_epoch_time - shift) % num_seconds_in_week;
 
@@ -3401,7 +3440,7 @@ void find_upcoming_events() {
       if (now >= *(events[i]->span[0]) && now <= *(events[i]->span[1])) {
         // Work in Progress: Commented out to allow for compilation
         //eeprom_object.events_queue[events_queue_size] = *(events[i]->event_id);
-        events_queue[events_queue_size] = *(events[i]->event_id);
+        // events_queue[events_queue_size] = *(events[i]->event_id);
         eeprom_object.events_queue_size++;
       }
     }
@@ -3446,6 +3485,7 @@ void reset_events_queue() {
 
 
 /*
+SECTION START
 Start of valve management code.
 */
 
@@ -3470,6 +3510,10 @@ void valve_menu() {
   }
 }
 
+/*
+Status: In Progress
+Description: Add valve based on user specifications
+*/
 void add_new_valve() {
   String model, link, power, valve_fittings, duty_cycle_type;
   int duty_cycle_ms, min_pressure_psi, max_pressure_psi;
@@ -3552,6 +3596,11 @@ void add_new_valve() {
   eeprom_object.current_valve_id++;
 }
 
+/*
+Status: In Progress
+Description: Remove valve. No parameters as the function gathers user input
+Note: Might want to pass a parameter instead
+*/
 void remove_valve() {
   // https://arduinojson.org/v6/api/jsonarray/remove/
   // ArduinoJson::Remove causes memory leaks but this might be fixable using the garbage collector?
@@ -3564,6 +3613,10 @@ void remove_valve() {
   eeprom_object.num_valves--;
 }
 
+/*
+Status: In Progress
+Description: Valve procedure integers represent the functionality of the various vales
+*/
 int get_valve_procedure(int valve_id) {
   for (JsonObject o : predefined_valves_array) {
     if (o["id"] == valve_id) {
@@ -3594,6 +3647,10 @@ int get_valve_procedure(int valve_id) {
   }
 }
 
+/*
+Description:
+Status: In Progress
+*/
 // Saves valve procedure integers for all valves to EEPROM
 void set_all_valve_integers() {
   for (JsonObject o : predefined_valves_array) {
@@ -3620,25 +3677,6 @@ void set_all_valve_integers() {
     }
   }
 }
-
-// void perform_valve_procedure(int procedure){
-//   // idle state normally closed (circuit is closed) and latching
-//   if (procedure == 1){
-//     // can turn
-//   }
-//   else if (procedure == 2){
-
-//   }
-//   else if (procedure == 3){
-
-//   }
-//   else if (procedure == 4){
-
-//   }
-//   else{
-//     System.println("Invalid procedure");
-//   }
-// }
 
 void print_all_valves() {
   serializeJsonPretty(predefined_valves_array, Serial);
@@ -3722,10 +3760,12 @@ void write_valve_data() {
 }
 
 /*
+SECTION END
 End of valve management code.
 */
 
 /*
+SECTION START
 Start of event management code.
 */
 
@@ -3793,8 +3833,8 @@ void events_menu() {
   } else if (menu_input == 7) {
    
     DateTime* span[2];
-    span[0] = &(rtc.now() + TimeSpan(60));
-    span[1] = &(rtc.now() + TimeSpan(120));
+    span[0] = new DateTime(rtc.now() + TimeSpan(60));
+    span[1] = new DateTime(rtc.now() + TimeSpan(120));
 
     bool groups[4] = {true, false, false, false};
     schedule_new_event(groups, false, 1, span);
@@ -3837,13 +3877,10 @@ void event_scheduler_menu() {
   //Exit scope of permit/deny window (event type 2)
 }
 
-// void wakeup_routine(){
-//   check_for_events();
+/*
+  Description: This method is used to schedule measurement events. These occur on a recurring basis specified by the match fields.
 
-// }
-
-
-
+*/
 void measurement_event_scheduler_menu() {
   //Schedule Measurement Event (scheduling the sensor reading interval)
   Serial.println(F("Measurement events are recurring!"));
@@ -4210,29 +4247,32 @@ void recurring_event_scheduler_menu(int event_type) {
   //evaluate this number
 }
 
-// Functions for managing events
+/*
+This function schedules a new event based on the arguments passed in.
+*/
 void schedule_new_event(bool groups[4], bool recurring, uint8_t event_type, DateTime* span[2]) {
-  // bool* groups_heap = new bool[4];
-  // for (int i = 0; i < 4; i++){
-  //   groups_heap[i] = groups[i];
-  // }
-  // DateTime** span_heap = new DateTime*[2];
-  // for (int i = 0; i < 2; i++){
-  //   span_heap[i] = span[i];
-  // }
+  // Here we use the new keyword for 2 reasons
+  // One reason is that it allocates the memory for the new event object on the heap. This means that this event will exist even after the funciton exits.
+  // The second reason is that the events array contains pointers to event objects and the new keyword returns a pointer to an event object
+  // We call the event constructor with the arguments that were passed in
   events[eeprom_object.num_events] = new event(eeprom_object.current_event_reference_number, groups, recurring, event_type, span);
-  // Serial.print("printing from schedule_new_event");
-  // print_all_events();
   eeprom_object.num_events++;
   eeprom_object.current_event_reference_number++;
+  print_all_events();
 }
 
+
+/*
+The events array is an array of pointers to event objects. This makes deletion easy as we just shift the pointers.
+*/
+// FixMe: Do we need to think about explicitly deleting events[index] in addition to shifting the pointers
 void remove_event(int index) {
   if (index < 0 || index >= eeprom_object.num_events){
     Serial.println(F("Invalid index, nothing removed"));
     return;
   }
   delete events[index];
+  // Shift all the events after the index down by 1
   for (int i = index; i < eeprom_object.num_events - 1; i++){
     events[i] = events[i+1];
   }
@@ -4247,17 +4287,21 @@ void remove_all_events() {
   delete[] events;
 }
 
-// saved
 // Clear JSON buffer
 // Put counter in loop to populate array, print size
 // Clear other buffers
 
 // Look into whether writing new file or not
 // Can compare 2 buffers or boolean to see if change
+
+
+/*
+This function reads events data from the events.txt file on the SD card. The events are stored in a JSON format on file.
+*/
 void read_events_data() {
-  // StaticJsonDocument<100> eventsLog;
-  // DynamicJsonDocument eventsLog(1024);
-  eventsLog.clear();
+  // eventsLog.clear();
+  StaticJsonDocument<1000> eventsLog;
+  // JsonDocument eventsLog;
   File events_file = SD.open("events.txt", FILE_READ);
   if (!events_file) {
     Serial.println(F("File does not exist, nothing was read."));
@@ -4268,91 +4312,103 @@ void read_events_data() {
   char* buf = new char[1024];
   events_file.read(buf, 1024);
   events_file.close();
-  DeserializationError error = deserializeJson(eventsLog, buf);
+
+  // https://arduinojson.org/v6/api/misc/deserializationerror/
+  // https://arduinojson.org/v6/issues/altered-input/
+  DeserializationError error = deserializeJson(eventsLog, (const char*) buf);
 
   if (error) {
     Serial.print(F("deserializeJson() failed: "));
     Serial.println(error.f_str());
+
+    // Serial.println("Printing contents of stream:")
+    // ReadLoggingStream ls(wifiClient, Serial);
+    // DeserializationError error = deserializeJson(eventsLog, buf);
     return;
   }
 
-  deserializeJson(eventsLog, temp_json_data);
+  events_file = SD.open("events.txt");
+  deserializeJson(eventsLog, events_file);
   JsonArray eventsArray = eventsLog["eventsArray"].as<JsonArray>();
 
   int i = 0;
+  // This array is used to avoid issues with having temporary data
+  // See case 1 under "Why does this happen?": https://arduinojson.org/v6/issues/garbage-out/
+  uint32_t span_unix_times[2][100];
+  // eventsLog["eventsArray"] is accessing the eventsArray we stored in the SD card.
+  // After using the .as<JsonArray>() method, we are able to iterate through the array using the following syntax
+  // Basically we iterate through the array and at each element, we let o be the current JsonObject we are considering
   for (JsonObject o : eventsLog["eventsArray"].as<JsonArray>()) {
+    // Call the default constructor to create a new event
     events[i] = new event();
+    // In the following lines, we access various parts of the current array element and store the data into the ith element of the events array
+    // We use arrow notation since events[i] is a pointer
     for (int j = 0; j < 4; j++) {
       events[i]->groups[j] = o["groups"][j];
     }
     events[i]->recurring = o["recurring"];
     events[i]->event_type = o["event_type"];
-    uint32_t start = o["start_span_seconds"];
-    uint32_t end = o["end_span_seconds"];
-    events[i]->span[0] = new DateTime(start);
-    events[i]->span[1] = new DateTime(end);
+    span_unix_times[0][i] = o["start_span_seconds"];
+    span_unix_times[1][i] = o["end_span_seconds"];
+    events[i]->span[0] = new DateTime(span_unix_times[0][i]);
+    events[i]->span[1] = new DateTime(span_unix_times[1][i]);
     i++;
   }
   Serial.println("read_events_data completed.");
 }
 
+/*
+Description: This function writes events data in a JSON format to the events.txt file on the SD card. 
+Notes: Other implementation options include using a global StaticJsonDocument and clearing or using a local/global JsonDocument object
+*/
 void write_events_data() {
+
+  Serial.println(F("Printing events data from write_events_data"));
   if (eeprom_object.num_events == 0) {
     Serial.println(F("No events currently scheduled, file was not written."));
     return;
   }
-  print_all_events();
-  SD.remove("events.txt");
-  eventsLog.clear();
-  // StaticJsonDocument<100> eventsLog;
-  //DynamicJsonDocument eventsLog(1024);
+  if (SD.remove("events.txt")){
+    Serial.println(F("Old events.txt file removed."));
+  }
+  else{
+    Serial.println(F("Old events.txt file not removed."));
+  }
+  StaticJsonDocument<10000> eventsLog;
+  // Here, we are creating the JSON object that we will eventually write to the events.txt file on the SD card
   JsonArray eventsArray = eventsLog.createNestedArray("eventsArray");
 
-  for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
-    events[i]->print();
+  uint32_t span_unix_times[2][100];
+  // We loop through the events array and for each event, we add a nested JSON object representing it to our array in the eventsLog JSON Object
+  for (int i = 0; i < eeprom_object.num_events; i++) {
     JsonObject event = eventsArray.createNestedObject();
     JsonArray groups = event.createNestedArray("groups");
+    // Here, we assign the various key value pairs in the JSON object representing the current event
+    // We use the arrow notation (->) since events is an array of pointers to event objects
     for (int j = 0; j < 4; j++) {
       groups.add(events[i]->groups[j]);
     }
     event["recurring"] = events[i]->recurring;
     event["event_type"] = events[i]->event_type;
-    event["start_span_seconds"] = events[i]->span[0]->unixtime();
-    event["end_span_seconds"] = events[i]->span[1]->unixtime();
+    // The span variables are stored in this array so that they don't get deleted as soon as the for loop goes to the next iteration
+    // Apparently storing temprorary variables in Arduino JSON objects can cause issues
+    span_unix_times[0][i] = events[i]->span[0]->unixtime();
+    span_unix_times[1][i] = events[i]->span[1]->unixtime();
+    event["start_span_seconds"] = span_unix_times[0][i];
+    event["end_span_seconds"] = span_unix_times[1][i];
+    Serial.println(events[i]->span[0]->unixtime());
+    Serial.println(events[i]->span[1]->unixtime());
   }
-  //char* json_array = new char[1024];  // char array large enough
   Serial.print(F("Saving new Event as Json..."));
-  //serializeJson(eventsLog, json_array);  //copy the info in the buffer to the array to use writeFile below
-  
   serializeJson(eventsLog, Serial);
   File file = SD.open("events.txt", FILE_WRITE);
-  serializeJson(eventsLog, file);
-  // file.println(json_array);
+  if (serializeJson(eventsLog, file) > 0){
+    Serial.println(F("Events file successfully written."));
+  }
+  else{
+    Serial.println(F("Error writing events file."));
+  }
   file.close();
-  dump_file("events.txt");
-  // writeFileSD("events.txt", json_array);  //filename limit of 13 chars
-  //   delay(10);
-  // if (!strcmp(json_array, temp_json_data)) {
-  //   Serial.println(F("No changes in events data, nothing printed to file"));
-  //   return;
-  // } else {
-  //   // FixMe: If events array hasn't changed, don't write anything to SD card
-  //   SD.remove("events.txt");
-  //   delay(10);
-  //   serializeJson(eventsLog, Serial);
-
-  //   //File f = SD.open("events.txt", FILE_WRITE);
-  //   //serializeJson(eventsLog, f);
-  //   //writeFileSD("events.txt", "Hello World!");
-  //   writeFileSD("events.txt", json_array);  //filename limit of 13 chars
-
-  //   //eventsArray.printTo(Serial);
-  //   //serializeJsonPretty(eventsLog, Serial);
-
-    //Prints the file contents, useful for debugging
-
-    
-  // }
 }
 
 void dump_file(const char* file){
@@ -4361,12 +4417,6 @@ void dump_file(const char* file){
     Serial.write(myfile.read());
   }
   myfile.close();
-}
-
-void test_read_and_write_events_data() {
-
-  const char s[300] = "{\"eventsArray\":[{\"groups\":[1,0,0,0],\"recurring\":1,\"event_type\":1,\"start_span_seconds\":173815966,\"end_span_seconds\":1738025966},{\"groups\":[0,1,0,0],\"recurring\":1,\"event_type\":1,\"start_span_seconds\":173815966,\"end_span_seconds\":1738025966}]}\0";
-  writeFileSD("events.txt", s);
 }
 
 void print_all_events() {
@@ -4385,7 +4435,8 @@ void print_all_events() {
 
 void print_events_by_group(int group) {
   for (uint16_t i = 0; i < eeprom_object.num_events; i++) {
-    if (events[i]->groups[i]) {
+    // We check if events[i] (a pointer to an event object) has groups[i] as true, which would mean that group i is one of the groups that this event is scheduled for
+     if (events[i]->groups[i]) {
       events[i]->print();
     }
   }
@@ -4715,6 +4766,10 @@ End of event code
 // }
 
 // Uses valve logic to open valve for specific group
+/*
+Description: Determines type and calls functions to open a specific valve based on type
+Status: Incomplete
+*/
 void open_valve(int group) {
   // Retreive valve based on group
 
@@ -4722,6 +4777,10 @@ void open_valve(int group) {
 }
 
 // Maybe add another piece of hardware that solely pulses the valves. This piece of hardware can be activated by this function or something
+/*
+Description: Keeps valves open based on the type of each valve
+Status: Incomplete
+*/
 void maintain_valves_open() {
   for (int i = 0; i < 4; i++) {
     // Work in Progress: Commented out to allow for compilation
@@ -4751,31 +4810,8 @@ void irrigate() {
   Serial.println(F("Irrigation done"));
 }
 
-// Planned Change: event has start, stop, e.g. threshold: 30, then evaluation criteria,
-
-// Integers to identify each criteria, parameter passed into this function
-
-// Read sensors, evaluate readings based on our criteria, then write an event tailored to the criteria
-
-// Removing actual irrigation from this function and shift to an evaluation function
-// bool
-
-// shell function
-void evaluate_irr_criteria_1(int WM_group_num, int WM_group_mean, int WM_group_water_threshold, uint32_t last_irr_time_for_group) {
-  bool irrigate = false;
-
-
-  // evaluate criteria
-
-  if (irrigate) {
-    // create new event
-    // probably singular
-    // calculate and define the event span
-  }
-}
 
 // Prototype sketch for latching valve module 12/17/24
-
 //New prompt for the 4 threshold groups of sensors.
 uint32_t WM_irrigation_prompt(int WM_group_num, int WM_group_mean, int WM_group_water_threshold, uint32_t last_irr_time_for_group, bool test_mode) {
   if (WM_group_num >= 1 && WM_group_num <= 4) {
@@ -4991,43 +5027,4 @@ uint32_t WM_irrigation_prompt(int WM_group_num, int WM_group_mean, int WM_group_
     Serial.println(F("Undefined Group number..."));
     delay(50);
   }
-}
-
-//[10:51 AM] Bierer, Andrew - REE-ARS
-//template for thought process
-void somethingWorkingPlease() {
-
-  //Read from SD card and have json file in a dynamically allocated buffer to pull from using dot access
-  //one sub function
-
-  //Read our large structure from EEPROM (can be done before SD card i dont think it matters)
-  //one sub function
-
-  //one function
-  //Check if it is time to do something
-  //Iteritively deal with each "event-reference #" in the SD card file
-  //->Checking the clock and using the "timeEvaluation" function with matchfields.
-  //For ANY  of the event-references in the sd-card file, is it time to do something - or wait to do something that is scheduled before next wake?
-  //No -> go to short sleep
-  //Yes -> Okay, which # is this? (lets call it "activeEvent") read eeprom information for
-
-  // int equal to active Event
-
-
-
-  /* struct valveEventSchedule{
- uint8_t outputValve[4]; //Array to hold valve number
- uint8_t valveEventReference[40]; //Array to hold the event reference(s) - a static declaration of 10 references to consider? would be hard to do this dynamically with a limited and fixed eeprom size.
-//output pin being set high
-} eventReference;
-*/
-
-  //One function
-  //Evaluate the sd-card event-reference # (that it is time to do something) against the stored eeprom event-reference
-  //For valves
-  //i = 0-4 for valves
-  //For valve event-references (ten array positions for each valve)
-  //if j == activeEvent
-  // Do the something that is being scheduled
-  //sub-function to do that something...
 }
